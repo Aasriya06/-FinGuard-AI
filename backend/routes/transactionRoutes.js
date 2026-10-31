@@ -31,8 +31,9 @@ router.post("/", async (req, res) => {
 // READ: Get all transactions
 router.get("/", async (req, res) => {
   try {
-    const transactions = await Transaction.find()
-      .sort({ createdAt: -1 });
+    const transactions = await Transaction.find().sort({
+      createdAt: -1,
+    });
 
     res.status(200).json(transactions);
   } catch (error) {
@@ -46,7 +47,9 @@ router.get("/", async (req, res) => {
 router.get("/:id", async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) {
-      return res.status(400).json({ message: "Invalid transaction ID" });
+      return res.status(400).json({
+        message: "Invalid transaction ID",
+      });
     }
 
     const transaction = await Transaction.findById(req.params.id);
@@ -65,11 +68,13 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// UPDATE: Modify an existing transaction
+// UPDATE: Modify a transaction and recalculate fraud risk
 router.put("/:id", async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) {
-      return res.status(400).json({ message: "Invalid transaction ID" });
+      return res.status(400).json({
+        message: "Invalid transaction ID",
+      });
     }
 
     const allowedFields = [
@@ -88,11 +93,8 @@ router.put("/:id", async (req, res) => {
       }
     }
 
-    const transaction = await Transaction.findByIdAndUpdate(
-      req.params.id,
-      { $set: updates },
-      { new: true, runValidators: true }
-    );
+    // Find the existing transaction
+    const transaction = await Transaction.findById(req.params.id);
 
     if (!transaction) {
       return res.status(404).json({
@@ -100,9 +102,22 @@ router.put("/:id", async (req, res) => {
       });
     }
 
+    // Apply permitted updates
+    Object.assign(transaction, updates);
+
+    // Recalculate fraud risk using updated information
+    const { riskScore, riskLevel, reasons } = calculateRisk(transaction);
+
+    transaction.riskScore = riskScore;
+    transaction.riskLevel = riskLevel;
+    transaction.reasons = reasons;
+
+    // Save the updated transaction
+    const savedTransaction = await transaction.save();
+
     res.json({
       message: "Transaction updated successfully",
-      transaction,
+      transaction: savedTransaction,
     });
   } catch (error) {
     res.status(400).json({
@@ -115,7 +130,9 @@ router.put("/:id", async (req, res) => {
 router.delete("/:id", async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) {
-      return res.status(400).json({ message: "Invalid transaction ID" });
+      return res.status(400).json({
+        message: "Invalid transaction ID",
+      });
     }
 
     const transaction = await Transaction.findByIdAndDelete(
