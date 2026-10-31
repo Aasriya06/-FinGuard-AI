@@ -22,7 +22,7 @@ FinGuard AI is a full-stack financial monitoring and fraud detection platform bu
 | Variable | Description | Example (Production) |
 | :--- | :--- | :--- |
 | `PORT` | Listening port for Express HTTP server | `5001` (assigned by cloud host) |
-| `MONGO_URI` | Full MongoDB connection string | `mongodb+srv://user:pass@cluster.mongodb.net/test?retryWrites=true&w=majority` |
+| `MONGO_URI` | Full MongoDB connection string | `mongodb+srv://<username>:<password>@<cluster-host>/test?retryWrites=true&w=majority` |
 | `CLIENT_URL` | Allowed frontend origin(s) for CORS | `https://finguard-ai.vercel.app` |
 
 ### Frontend (`/frontend/.env` or Platform Settings)
