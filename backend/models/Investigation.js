@@ -5,13 +5,16 @@ const investigationSchema = new mongoose.Schema(
     transaction: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Transaction",
-      required: true,
+      required: [true, "Transaction reference is required"],
       unique: true,
     },
 
     status: {
       type: String,
-      enum: ["Open", "In Progress", "Resolved"],
+      enum: {
+        values: ["Open", "In Progress", "Resolved"],
+        message: "{VALUE} is not a valid investigation status",
+      },
       default: "Open",
     },
 
@@ -23,7 +26,10 @@ const investigationSchema = new mongoose.Schema(
 
     priority: {
       type: String,
-      enum: ["Low", "Medium", "High"],
+      enum: {
+        values: ["Low", "Medium", "High"],
+        message: "{VALUE} is not a valid priority level",
+      },
       default: "Medium",
     },
   },
@@ -32,7 +38,4 @@ const investigationSchema = new mongoose.Schema(
   }
 );
 
-module.exports = mongoose.model(
-  "Investigation",
-  investigationSchema
-);
+module.exports = mongoose.model("Investigation", investigationSchema);

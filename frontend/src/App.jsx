@@ -1,6 +1,4 @@
-import { useEffect, useState } from "react";
-import axios from "axios";
-
+import { useEffect, useState, useMemo } from "react";
 import Transactions from "./components/Transactions";
 import FraudDetection from "./components/FraudDetection";
 import RiskAnalytics from "./components/RiskAnalytics";
@@ -15,10 +13,13 @@ import {
   ShieldCheck,
   RefreshCw,
   AlertCircle,
+  TrendingUp,
+  ArrowUpRight,
+  Activity,
 } from "lucide-react";
 
 import "./App.css";
-import { TRANSACTIONS_API as API_URL, checkHealth } from "./config/api";
+import { transactionsApi, checkHealth, extractErrorMessage, API_URL } from "./config/api";
 
 function App() {
   const [activePage, setActivePage] = useState("Dashboard");
@@ -49,20 +50,21 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // Fetch transactions from MongoDB through backend API
+  // Fetch transactions from backend
   const fetchTransactions = async () => {
     try {
       setLoading(true);
       setError("");
-
-      const response = await axios.get(API_URL);
-      setTransactions(response.data);
+      const data = await transactionsApi.getAll();
+      setTransactions(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error("Dashboard API Error:", err);
-      const backendMessage =
-        err.response?.data?.message ||
-        "Unable to load dashboard data. Check your backend connection.";
-      setError(backendMessage);
+      setError(
+        extractErrorMessage(
+          err,
+          "Unable to load dashboard data. Check your backend connection."
+        )
+      );
     } finally {
       setLoading(false);
     }
@@ -75,32 +77,63 @@ function App() {
     }
   }, [activePage]);
 
-  // Dashboard calculations
+  // Dashboard calculations using real database records
   const totalTransactions = transactions.length;
 
-  const transactionVolume = transactions.reduce(
-    (total, transaction) => total + Number(transaction.amount || 0),
-    0
-  );
+  const transactionVolume = useMemo(() => {
+    return transactions.reduce(
+      (total, tx) => total + Number(tx.amount || 0),
+      0
+    );
+  }, [transactions]);
 
-  const suspiciousTransactions = transactions.filter(
-    (transaction) =>
-      transaction.riskLevel === "Medium" || transaction.riskLevel === "High"
-  ).length;
+  // Accurate classifications: Low (0-29), Medium (30-59), High (60-100)
+  const highRiskCount = useMemo(() => {
+    return transactions.filter(
+      (tx) => tx.riskLevel === "High" || (Number(tx.riskScore) || 0) >= 60
+    ).length;
+  }, [transactions]);
 
-  const highRiskAlerts = transactions.filter(
-    (transaction) => transaction.riskLevel === "High"
-  ).length;
+  const mediumRiskCount = useMemo(() => {
+    return transactions.filter(
+      (tx) =>
+        (tx.riskLevel === "Medium" ||
+          ((Number(tx.riskScore) || 0) >= 30 && (Number(tx.riskScore) || 0) < 60)) &&
+        tx.riskLevel !== "High" &&
+        (Number(tx.riskScore) || 0) < 60
+    ).length;
+  }, [transactions]);
 
-  const averageRiskScore =
-    totalTransactions > 0
+  const lowRiskCount = useMemo(() => {
+    return transactions.filter(
+      (tx) =>
+        tx.riskLevel === "Low" ||
+        (!tx.riskLevel && (Number(tx.riskScore) || 0) < 30)
+    ).length;
+  }, [transactions]);
+
+  // Unified Suspicious Transactions: Medium + High Risk (Score >= 30)
+  const suspiciousTransactions = useMemo(() => {
+    return highRiskCount + mediumRiskCount;
+  }, [highRiskCount, mediumRiskCount]);
+
+  const averageRiskScore = useMemo(() => {
+    return totalTransactions > 0
       ? (
           transactions.reduce(
-            (total, transaction) => total + Number(transaction.riskScore || 0),
+            (total, tx) => total + Number(tx.riskScore || 0),
             0
           ) / totalTransactions
         ).toFixed(1)
       : "0.0";
+  }, [transactions, totalTransactions]);
+
+  // Top Fraud Alerts requiring immediate review
+  const fraudAlerts = useMemo(() => {
+    return transactions
+      .filter((tx) => (Number(tx.riskScore) || 0) >= 30 || tx.riskLevel === "High" || tx.riskLevel === "Medium")
+      .slice(0, 4);
+  }, [transactions]);
 
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat("en-IN", {
@@ -115,9 +148,20 @@ function App() {
   const isConnecting =
     systemHealth.status === "OK" && systemHealth.database !== "Connected";
 
+  const getRiskBadge = (level, score) => {
+    const s = Number(score) || 0;
+    if (level === "High" || s >= 60) {
+      return <span className="risk-pill high">HIGH ({s})</span>;
+    }
+    if (level === "Medium" || s >= 30) {
+      return <span className="risk-pill medium">MED ({s})</span>;
+    }
+    return <span className="risk-pill low">LOW ({s})</span>;
+  };
+
   return (
     <div className="app">
-      {/* Sidebar */}
+      {/* Sidebar Navigation */}
       <aside className="sidebar">
         <div className="brand">
           <ShieldCheck size={30} />
@@ -147,19 +191,22 @@ function App() {
 
         <div className="sidebar-footer">
           <ShieldCheck size={18} />
-          <span>FinGuard AI v1.0</span>
+          <span>FinGuard AI v1.0 • Production Ready</span>
         </div>
       </aside>
 
-      {/* Main Content */}
+      {/* Main Content Area */}
       <main className="main-content">
         <header className="topbar">
           <div>
-            <p className="eyebrow">FINANCIAL MONITORING PLATFORM</p>
+            <p className="eyebrow">FINANCIAL RISK & MONITORING PLATFORM</p>
             <h1>{activePage}</h1>
           </div>
 
-          <div className="status" title={`Database: ${systemHealth.database || "Unknown"}`}>
+          <div
+            className="status"
+            title={`Database: ${systemHealth.database || "Unknown"}`}
+          >
             <span
               className="status-dot"
               style={{
@@ -180,73 +227,52 @@ function App() {
 
         {activePage === "Dashboard" ? (
           <>
-            {/* Welcome Section */}
+            {/* Welcome Banner */}
             <section className="welcome-card">
-              <h2>Financial Intelligence Overview</h2>
+              <h2>Financial Intelligence & Risk Operations</h2>
               <p>
-                Monitor transactions, identify suspicious activity, and analyze
-                financial risk using real-time transaction data.
+                Continuous algorithmic monitoring, fraud pattern classification,
+                and transaction investigation audit trail powered by real-time data.
               </p>
             </section>
 
-            {/* Refresh Button */}
+            {/* Refresh Toolbar */}
             <div
               style={{
                 display: "flex",
-                justifyContent: "flex-end",
+                justifyContent: "space-between",
+                alignItems: "center",
                 marginBottom: "20px",
               }}
             >
+              <span style={{ fontSize: "13px", color: "#94a3b8" }}>
+                Target API: <code>{API_URL}</code> | Database:{" "}
+                <strong style={{ color: isOnline ? "#4ade80" : "#f59e0b" }}>
+                  {systemHealth.database || "Unknown"}
+                </strong>
+              </span>
+
               <button
                 onClick={() => {
                   fetchTransactions();
                   updateHealth();
                 }}
                 disabled={loading}
-                style={{
-                  background: "#0284c7",
-                  color: "white",
-                  border: "none",
-                  padding: "10px 18px",
-                  borderRadius: "8px",
-                  cursor: loading ? "wait" : "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  fontWeight: 500,
-                }}
+                className="dashboard-refresh-btn"
               >
                 <RefreshCw size={16} className={loading ? "spin" : ""} />
                 {loading ? "Refreshing..." : "Refresh Dashboard"}
               </button>
             </div>
 
+            {/* Error Notice */}
             {error && (
-              <div
-                style={{
-                  background: "rgba(239, 68, 68, 0.12)",
-                  border: "1px solid rgba(239, 68, 68, 0.35)",
-                  padding: "16px 20px",
-                  borderRadius: "12px",
-                  marginBottom: "22px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: "16px",
-                  color: "#fca5a5",
-                }}
-              >
+              <div className="dashboard-error-banner">
                 <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                   <AlertCircle size={22} color="#ef4444" style={{ flexShrink: 0 }} />
                   <div>
                     <strong style={{ color: "#f87171" }}>Connection Notice:</strong>{" "}
                     {error}
-                    <div style={{ fontSize: "12px", color: "#94a3b8", marginTop: "4px" }}>
-                      Target API: <code>{API_URL}</code> | Backend:{" "}
-                      <span style={{ color: isOnline ? "#22c55e" : "#f59e0b" }}>
-                        {systemHealth.status} (DB: {systemHealth.database || "Disconnected"})
-                      </span>
-                    </div>
                   </div>
                 </div>
                 <button
@@ -255,114 +281,290 @@ function App() {
                     updateHealth();
                   }}
                   disabled={loading}
-                  style={{
-                    background: "#ef4444",
-                    color: "white",
-                    border: "none",
-                    padding: "8px 14px",
-                    borderRadius: "6px",
-                    cursor: "pointer",
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    whiteSpace: "nowrap",
-                  }}
+                  className="retry-btn"
                 >
                   Retry
                 </button>
               </div>
             )}
 
-            {/* Dashboard Statistics */}
+            {/* Primary Metrics Grid (Items 1 - 6) */}
             <section className="stats-grid">
               <div className="stat-card">
                 <p>Total Transactions</p>
                 <h2>{totalTransactions}</h2>
-                <span>Database records</span>
+                <span>1. Verified DB records</span>
               </div>
 
               <div className="stat-card">
-                <p>Transaction Volume</p>
+                <p>Total Transaction Volume</p>
                 <h2>{formatCurrency(transactionVolume)}</h2>
-                <span>Total processed amount</span>
+                <span>2. Processed amount</span>
               </div>
 
               <div className="stat-card">
                 <p>Suspicious Transactions</p>
                 <h2>{suspiciousTransactions}</h2>
-                <span>Medium and high risk</span>
+                <span>3. Medium + High Risk (Score ≥ 30)</span>
               </div>
 
               <div className="stat-card">
                 <p>High-Risk Alerts</p>
-                <h2>{highRiskAlerts}</h2>
-                <span>Requires immediate review</span>
+                <h2>{highRiskCount}</h2>
+                <span>4. Score ≥ 60 (Immediate Action)</span>
               </div>
             </section>
 
-            {/* Risk Overview */}
-            <section className="dashboard-panel">
-              <h2>Risk Monitoring Overview</h2>
+            {/* Risk Breakdown Summary Row (Items 5 & 6 & 7) */}
+            <section className="dashboard-subgrid">
+              <div className="sub-stat-card">
+                <div className="sub-stat-header">
+                  <span className="dot dot-low" />
+                  <h4>Low-Risk Activity</h4>
+                </div>
+                <h3>{lowRiskCount}</h3>
+                <p>Score 0 to 29 (Baseline)</p>
+              </div>
 
-              <p>
-                Average Risk Score:
-                <strong> {averageRiskScore}/100</strong>
-              </p>
+              <div className="sub-stat-card">
+                <div className="sub-stat-header">
+                  <span className="dot dot-med" />
+                  <h4>Medium-Risk Activity</h4>
+                </div>
+                <h3>{mediumRiskCount}</h3>
+                <p>Score 30 to 59 (Flagged)</p>
+              </div>
 
-              <p>
-                Total Transactions Analyzed:
-                <strong> {totalTransactions}</strong>
-              </p>
+              <div className="sub-stat-card">
+                <div className="sub-stat-header">
+                  <span className="dot dot-high" />
+                  <h4>High-Risk Activity</h4>
+                </div>
+                <h3>{highRiskCount}</h3>
+                <p>Score 60 to 100 (Critical)</p>
+              </div>
 
-              <p>
-                Suspicious Transactions:
-                <strong> {suspiciousTransactions}</strong>
-              </p>
+              <div className="sub-stat-card">
+                <div className="sub-stat-header">
+                  <Activity size={16} className="text-accent" />
+                  <h4>Average Risk Score</h4>
+                </div>
+                <h3>{averageRiskScore}/100</h3>
+                <p>Mean across all records</p>
+              </div>
             </section>
 
-            {/* Recent Transactions */}
-            <section
-              className="dashboard-panel"
-              style={{ marginTop: "24px" }}
-            >
-              <h2>Recent Transactions</h2>
+            {/* Risk Distribution Visual Progress Bar (Item 7) */}
+            <section className="dashboard-panel" style={{ marginTop: "24px" }}>
+              <div className="panel-header-row">
+                <h2>7. Risk Tier Distribution</h2>
+                <span className="panel-badge">
+                  {totalTransactions} Total Evaluated
+                </span>
+              </div>
+
+              <div className="distribution-bar">
+                <div
+                  className="bar-segment seg-low"
+                  style={{
+                    width: totalTransactions
+                      ? `${(lowRiskCount / totalTransactions) * 100}%`
+                      : "0%",
+                  }}
+                  title={`Low Risk: ${lowRiskCount}`}
+                />
+                <div
+                  className="bar-segment seg-med"
+                  style={{
+                    width: totalTransactions
+                      ? `${(mediumRiskCount / totalTransactions) * 100}%`
+                      : "0%",
+                  }}
+                  title={`Medium Risk: ${mediumRiskCount}`}
+                />
+                <div
+                  className="bar-segment seg-high"
+                  style={{
+                    width: totalTransactions
+                      ? `${(highRiskCount / totalTransactions) * 100}%`
+                      : "0%",
+                  }}
+                  title={`High Risk: ${highRiskCount}`}
+                />
+              </div>
+
+              <div className="distribution-legend">
+                <span>
+                  <span className="legend-indicator dot-low" /> Low Risk:{" "}
+                  <strong>{lowRiskCount}</strong> (
+                  {totalTransactions
+                    ? ((lowRiskCount / totalTransactions) * 100).toFixed(0)
+                    : 0}
+                  %)
+                </span>
+                <span>
+                  <span className="legend-indicator dot-med" /> Medium Risk:{" "}
+                  <strong>{mediumRiskCount}</strong> (
+                  {totalTransactions
+                    ? ((mediumRiskCount / totalTransactions) * 100).toFixed(0)
+                    : 0}
+                  %)
+                </span>
+                <span>
+                  <span className="legend-indicator dot-high" /> High Risk:{" "}
+                  <strong>{highRiskCount}</strong> (
+                  {totalTransactions
+                    ? ((highRiskCount / totalTransactions) * 100).toFixed(0)
+                    : 0}
+                  %)
+                </span>
+              </div>
+            </section>
+
+            {/* Split Section: Fraud Alerts (Item 9) & Trends (Item 10) */}
+            <div className="dashboard-split-row">
+              {/* Fraud Alerts (Item 9) */}
+              <section className="dashboard-panel half-panel">
+                <div className="panel-header-row">
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <ShieldAlert size={20} color="#f87171" />
+                    <h2>9. Active Fraud Alerts</h2>
+                  </div>
+                  <button
+                    className="link-btn"
+                    onClick={() => setActivePage("Fraud Detection")}
+                  >
+                    View All <ArrowUpRight size={14} />
+                  </button>
+                </div>
+
+                {fraudAlerts.length === 0 ? (
+                  <p className="clean-state-msg">
+                    No active high or medium risk alerts. All transactions within nominal parameters.
+                  </p>
+                ) : (
+                  <div className="alerts-list">
+                    {fraudAlerts.map((tx) => (
+                      <div key={tx._id} className="alert-item">
+                        <div className="alert-meta">
+                          <span className="alert-id">{tx.transactionId}</span>
+                          <span className="alert-amount">{formatCurrency(tx.amount)}</span>
+                        </div>
+                        <div className="alert-reasons">
+                          {tx.reasons && tx.reasons.length > 0
+                            ? tx.reasons.join(" • ")
+                            : "Risk threshold triggered"}
+                        </div>
+                        <div className="alert-footer">
+                          {getRiskBadge(tx.riskLevel, tx.riskScore)}
+                          <span className="alert-time">
+                            {tx.createdAt ? new Date(tx.createdAt).toLocaleDateString("en-IN") : "Recent"}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              {/* Transaction Trends Summary (Item 10) */}
+              <section className="dashboard-panel half-panel">
+                <div className="panel-header-row">
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <TrendingUp size={20} color="#38bdf8" />
+                    <h2>10. Intelligence & Trends</h2>
+                  </div>
+                  <button
+                    className="link-btn"
+                    onClick={() => setActivePage("Risk Analytics")}
+                  >
+                    Analytics <ArrowUpRight size={14} />
+                  </button>
+                </div>
+
+                <div className="trends-card-body">
+                  <div className="trend-stat-row">
+                    <span>Average Transaction Value:</span>
+                    <strong>
+                      {totalTransactions
+                        ? formatCurrency(transactionVolume / totalTransactions)
+                        : "₹0"}
+                    </strong>
+                  </div>
+                  <div className="trend-stat-row">
+                    <span>Risk Alert Ratio:</span>
+                    <strong>
+                      {totalTransactions
+                        ? `${((suspiciousTransactions / totalTransactions) * 100).toFixed(1)}%`
+                        : "0%"}
+                    </strong>
+                  </div>
+                  <div className="trend-stat-row">
+                    <span>Audit Pipeline Health:</span>
+                    <strong style={{ color: "#4ade80" }}>
+                      {systemHealth.database === "Connected" ? "Operational (Atlas)" : "Standby"}
+                    </strong>
+                  </div>
+                  <div className="trend-stat-row">
+                    <span>Heuristic Verification:</span>
+                    <strong>100% Deterministic (UTC)</strong>
+                  </div>
+                </div>
+              </section>
+            </div>
+
+            {/* Recent Transactions Table (Item 8) */}
+            <section className="dashboard-panel" style={{ marginTop: "24px" }}>
+              <div className="panel-header-row">
+                <h2>8. Recent Transactions</h2>
+                <button
+                  className="link-btn"
+                  onClick={() => setActivePage("Transactions")}
+                >
+                  Manage All Transactions <ArrowUpRight size={14} />
+                </button>
+              </div>
 
               <div style={{ overflowX: "auto" }}>
-                <table
-                  style={{
-                    width: "100%",
-                    borderCollapse: "collapse",
-                    marginTop: "20px",
-                    textAlign: "left",
-                  }}
-                >
+                <table className="dashboard-table">
                   <thead>
                     <tr>
                       <th>Transaction ID</th>
                       <th>Sender</th>
                       <th>Receiver</th>
                       <th>Amount</th>
-                      <th>Risk Score</th>
-                      <th>Risk Level</th>
+                      <th>Type</th>
+                      <th>Risk Evaluation</th>
+                      <th>Status</th>
                     </tr>
                   </thead>
 
                   <tbody>
-                    {transactions.slice(0, 5).map((transaction) => (
-                      <tr key={transaction._id}>
-                        <td>{transaction.transactionId}</td>
-                        <td>{transaction.sender}</td>
-                        <td>{transaction.receiver}</td>
-                        <td>{formatCurrency(transaction.amount)}</td>
-                        <td>{transaction.riskScore || 0}/100</td>
-                        <td>{transaction.riskLevel || "Low"}</td>
+                    {transactions.slice(0, 6).map((tx) => (
+                      <tr key={tx._id}>
+                        <td>
+                          <span className="mono-text">{tx.transactionId}</span>
+                        </td>
+                        <td>{tx.sender}</td>
+                        <td>{tx.receiver}</td>
+                        <td className="amount-text">{formatCurrency(tx.amount)}</td>
+                        <td>
+                          <span className="type-pill">{tx.transactionType}</span>
+                        </td>
+                        <td>{getRiskBadge(tx.riskLevel, tx.riskScore)}</td>
+                        <td>
+                          <span className={`status-dot-inline ${(tx.status || "completed").toLowerCase()}`}>
+                            {tx.status}
+                          </span>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
 
                 {transactions.length === 0 && !loading && !error && (
-                  <p style={{ marginTop: "20px" }}>
-                    No transactions available.
+                  <p style={{ marginTop: "20px", color: "#94a3b8", textAlign: "center" }}>
+                    No transactions available in database.
                   </p>
                 )}
               </div>

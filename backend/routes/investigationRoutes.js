@@ -1,22 +1,57 @@
 const express = require("express");
 const mongoose = require("mongoose");
-
 const Investigation = require("../models/Investigation");
 const Transaction = require("../models/Transaction");
 
 const router = express.Router();
 
-// GET all investigations
+// GET all investigations with optional status/priority filters
 router.get("/", async (req, res) => {
   try {
-    const investigations = await Investigation.find()
+    const { status, priority } = req.query;
+    const filter = {};
+
+    if (status && ["Open", "In Progress", "Resolved"].includes(status)) {
+      filter.status = status;
+    }
+    if (priority && ["Low", "Medium", "High"].includes(priority)) {
+      filter.priority = priority;
+    }
+
+    const investigations = await Investigation.find(filter)
       .populate("transaction")
       .sort({ createdAt: -1 });
 
-    res.json(investigations);
+    return res.json(investigations);
   } catch (error) {
-    res.status(500).json({
+    return res.status(500).json({
       message: "Failed to fetch investigations",
+      error: error.message,
+    });
+  }
+});
+
+// GET single investigation by ID
+router.get("/:id", async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({
+        message: "Invalid investigation ID format",
+      });
+    }
+
+    const investigation = await Investigation.findById(req.params.id).populate("transaction");
+
+    if (!investigation) {
+      return res.status(404).json({
+        message: "Investigation not found",
+      });
+    }
+
+    return res.json(investigation);
+  } catch (error) {
+    return res.status(500).json({
+      message: "Failed to fetch investigation",
       error: error.message,
     });
   }
@@ -25,11 +60,11 @@ router.get("/", async (req, res) => {
 // CREATE investigation
 router.post("/", async (req, res) => {
   try {
-    const { transactionId, notes, priority } = req.body;
+    const { transactionId, notes, priority, status } = req.body;
 
-    if (!mongoose.isValidObjectId(transactionId)) {
+    if (!transactionId || !mongoose.isValidObjectId(transactionId)) {
       return res.status(400).json({
-        message: "Invalid transaction ID",
+        message: "A valid transaction ID is required",
       });
     }
 
@@ -47,19 +82,36 @@ router.post("/", async (req, res) => {
 
     if (existing) {
       return res.status(409).json({
-        message: "Investigation already exists",
+        message: "An investigation already exists for this transaction",
+        investigationId: existing._id,
       });
     }
 
+    const validPriorities = ["Low", "Medium", "High"];
+    const validStatuses = ["Open", "In Progress", "Resolved"];
+
+    const cleanPriority = priority && validPriorities.includes(priority)
+      ? priority
+      : transaction.riskLevel === "High"
+      ? "High"
+      : "Medium";
+
+    const cleanStatus = status && validStatuses.includes(status)
+      ? status
+      : "Open";
+
     const investigation = await Investigation.create({
       transaction: transactionId,
-      notes,
-      priority,
+      notes: typeof notes === "string" ? notes.trim() : "",
+      priority: cleanPriority,
+      status: cleanStatus,
     });
 
-    res.status(201).json(investigation);
+    const populated = await investigation.populate("transaction");
+
+    return res.status(201).json(populated);
   } catch (error) {
-    res.status(500).json({
+    return res.status(400).json({
       message: "Failed to create investigation",
       error: error.message,
     });
@@ -71,24 +123,42 @@ router.put("/:id", async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) {
       return res.status(400).json({
-        message: "Invalid investigation ID",
+        message: "Invalid investigation ID format",
       });
     }
 
     const updates = {};
-    const allowedFields = ["status", "notes", "priority"];
+    const { status, notes, priority } = req.body;
 
-    for (const field of allowedFields) {
-      if (Object.prototype.hasOwnProperty.call(req.body, field)) {
-        updates[field] = req.body[field];
+    if (status !== undefined) {
+      const validStatuses = ["Open", "In Progress", "Resolved"];
+      if (!validStatuses.includes(status)) {
+        return res.status(400).json({
+          message: `Invalid status '${status}'. Allowed: ${validStatuses.join(", ")}`,
+        });
       }
+      updates.status = status;
+    }
+
+    if (priority !== undefined) {
+      const validPriorities = ["Low", "Medium", "High"];
+      if (!validPriorities.includes(priority)) {
+        return res.status(400).json({
+          message: `Invalid priority '${priority}'. Allowed: ${validPriorities.join(", ")}`,
+        });
+      }
+      updates.priority = priority;
+    }
+
+    if (notes !== undefined) {
+      updates.notes = typeof notes === "string" ? notes.trim() : String(notes);
     }
 
     const investigation = await Investigation.findByIdAndUpdate(
       req.params.id,
       { $set: updates },
       { new: true, runValidators: true }
-    );
+    ).populate("transaction");
 
     if (!investigation) {
       return res.status(404).json({
@@ -96,10 +166,10 @@ router.put("/:id", async (req, res) => {
       });
     }
 
-    res.json(investigation);
+    return res.json(investigation);
   } catch (error) {
-    res.status(400).json({
-      message: error.message,
+    return res.status(400).json({
+      message: error.message || "Failed to update investigation",
     });
   }
 });

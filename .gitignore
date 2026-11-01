@@ -42,3 +42,5 @@ pnpm-debug.log*
 # Deployment & Temporary Artifacts
 .vercel/
 .turbo/
+risk-preview-before-update.json
+*backup*.json
