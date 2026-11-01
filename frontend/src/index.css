@@ -1,13 +1,71 @@
+:root {
+  --bg-main: #0B1120;
+  --bg-sidebar: #0F172A;
+  --bg-card: #1E293B;
+  --bg-card-hover: #24344d;
+  --border-color: #334155;
+  --border-subtle: #1e293b;
+  
+  --primary-purple: #7C3AED;
+  --primary-purple-hover: #6D28D9;
+  --secondary-purple: #A78BFA;
+  --purple-glow: rgba(124, 58, 237, 0.25);
+  
+  --cyan-accent: #06B6D4;
+  --cyan-glow: rgba(6, 182, 212, 0.2);
+  
+  --success-green: #10B981;
+  --success-green-bg: rgba(16, 185, 129, 0.12);
+  
+  --warning-red: #F43F5E;
+  --warning-red-bg: rgba(244, 63, 94, 0.12);
+  
+  --text-primary: #F8FAFC;
+  --text-secondary: #94A3B8;
+  --text-muted: #64748B;
+  
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color-scheme: dark;
+}
+
 * {
   box-sizing: border-box;
 }
 
 body {
   margin: 0;
+  padding: 0;
   min-width: 320px;
-  font-family: Inter, Arial, sans-serif;
+  background-color: var(--bg-main);
+  color: var(--text-primary);
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code, pre, .mono-text, .mono-badge {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 button {
   font-family: inherit;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0B1120;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
 }

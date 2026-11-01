@@ -45,8 +45,7 @@ function RiskAnalytics() {
     fetchTransactions();
   }, []);
 
-  // Accurate Risk Level Classifications:
-  // Low: 0-29, Medium: 30-59, High: 60-100
+  // Accurate Classifications: Low (0-29), Medium (30-59), High (60-100)
   const { lowRisk, mediumRisk, highRisk } = useMemo(() => {
     let low = 0;
     let med = 0;
@@ -67,13 +66,14 @@ function RiskAnalytics() {
     return { lowRisk: low, mediumRisk: med, highRisk: high };
   }, [transactions]);
 
+  // Red, Yellow/Amber, Green palette for Risk Tiers
   const riskPieData = useMemo(() => [
     { name: "Low Risk (0-29)", value: lowRisk },
     { name: "Medium Risk (30-59)", value: mediumRisk },
     { name: "High Risk (60-100)", value: highRisk },
   ], [lowRisk, mediumRisk, highRisk]);
 
-  const PIE_COLORS = ["#22c55e", "#f59e0b", "#ef4444"];
+  const PIE_COLORS = ["#10B981", "#F59E0B", "#F43F5E"];
 
   // Transaction Volume & Risk per Transaction Bar Chart
   const transactionChartData = useMemo(() => {
@@ -158,8 +158,8 @@ function RiskAnalytics() {
           onClick={fetchTransactions}
           disabled={loading}
         >
-          <RefreshCw size={16} className={loading ? "spin" : ""} />
-          Refresh Analytics
+          <RefreshCw size={15} className={loading ? "spin" : ""} />
+          <span>Refresh Analytics</span>
         </button>
       </div>
 
@@ -170,7 +170,9 @@ function RiskAnalytics() {
         <div className="analytics-card">
           <div className="card-top">
             <p>Total Transactions</p>
-            <TrendingUp size={18} className="text-accent" />
+            <div className="stat-icon-wrap icon-purple">
+              <TrendingUp size={18} color="#A78BFA" />
+            </div>
           </div>
           <h2>{transactions.length}</h2>
           <span>Recorded in database</span>
@@ -179,27 +181,33 @@ function RiskAnalytics() {
         <div className="analytics-card">
           <div className="card-top">
             <p>Total Volume</p>
-            <CreditCard size={18} className="text-accent" />
+            <div className="stat-icon-wrap icon-cyan">
+              <CreditCard size={18} color="#06B6D4" />
+            </div>
           </div>
           <h2>{formatCurrency(totalVolume)}</h2>
-          <span>Cumulative transaction value</span>
+          <span>Processed turnover</span>
         </div>
 
         <div className="analytics-card">
           <div className="card-top">
             <p>Average Risk Score</p>
-            <ShieldAlert size={18} className="text-warning" />
+            <div className="stat-icon-wrap icon-purple">
+              <ShieldAlert size={18} color="#7C3AED" />
+            </div>
           </div>
-          <h2>{averageRisk}/100</h2>
-          <span>Max Score: {maxRiskScore}/100</span>
+          <h2>{averageRisk}<span className="unit">/100</span></h2>
+          <span>Peak Score: {maxRiskScore}/100</span>
         </div>
 
         <div className="analytics-card">
           <div className="card-top">
             <p>High-Risk Flags</p>
-            <ShieldAlert size={18} className="text-danger" />
+            <div className="stat-icon-wrap icon-red">
+              <ShieldAlert size={18} color="#F43F5E" />
+            </div>
           </div>
-          <h2>{highRisk}</h2>
+          <h2 className="text-red">{highRisk}</h2>
           <span>{(transactions.length ? ((highRisk / transactions.length) * 100).toFixed(0) : 0)}% of total volume</span>
         </div>
       </div>
@@ -207,7 +215,7 @@ function RiskAnalytics() {
       {/* Charts Section */}
       {loading ? (
         <div className="analytics-loading">
-          <RefreshCw size={28} className="spin text-accent" />
+          <RefreshCw size={26} className="spin text-accent" />
           <p>Computing analytics models...</p>
         </div>
       ) : transactions.length === 0 ? (
@@ -218,13 +226,13 @@ function RiskAnalytics() {
         </div>
       ) : (
         <div className="analytics-charts-grid">
-          {/* Chart 1: Risk Distribution Pie Chart */}
+          {/* Chart 1: Risk Distribution Donut Chart */}
           <div className="chart-card">
             <div className="chart-title">
-              <PieIcon size={18} />
+              <PieIcon size={18} color="#A78BFA" />
               <h3>Risk Tier Distribution</h3>
             </div>
-            <p className="chart-subtitle">Low (0-29), Medium (30-59), High (60-100)</p>
+            <p className="chart-subtitle">Low (0–29), Medium (30–59), High (60–100)</p>
 
             <div className="chart-container">
               <ResponsiveContainer width="100%" height={260}>
@@ -236,6 +244,7 @@ function RiskAnalytics() {
                     innerRadius={55}
                     outerRadius={85}
                     paddingAngle={4}
+                    stroke="none"
                   >
                     {riskPieData.map((entry, index) => (
                       <Cell key={entry.name} fill={PIE_COLORS[index]} />
@@ -243,10 +252,10 @@ function RiskAnalytics() {
                   </Pie>
                   <Tooltip
                     contentStyle={{
-                      background: "#0f172a",
+                      background: "#0F172A",
                       border: "1px solid #334155",
-                      borderRadius: "8px",
-                      color: "#fff",
+                      borderRadius: "10px",
+                      color: "#F8FAFC",
                     }}
                   />
                   <Legend />
@@ -258,7 +267,7 @@ function RiskAnalytics() {
           {/* Chart 2: Transaction Volume by Type */}
           <div className="chart-card">
             <div className="chart-title">
-              <BarChart2 size={18} />
+              <BarChart2 size={18} color="#06B6D4" />
               <h3>Volume by Payment Method</h3>
             </div>
             <p className="chart-subtitle">Total amount processed per channel</p>
@@ -266,19 +275,19 @@ function RiskAnalytics() {
             <div className="chart-container">
               <ResponsiveContainer width="100%" height={260}>
                 <BarChart data={typeBreakdownData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                  <XAxis dataKey="type" stroke="#94a3b8" fontSize={12} />
-                  <YAxis stroke="#94a3b8" fontSize={12} tickFormatter={formatShortCurrency} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.35} />
+                  <XAxis dataKey="type" stroke="#94A3B8" fontSize={12} tickLine={false} />
+                  <YAxis stroke="#94A3B8" fontSize={12} tickFormatter={formatShortCurrency} tickLine={false} />
                   <Tooltip
                     formatter={(val) => [formatCurrency(val), "Volume"]}
                     contentStyle={{
-                      background: "#0f172a",
+                      background: "#0F172A",
                       border: "1px solid #334155",
-                      borderRadius: "8px",
-                      color: "#fff",
+                      borderRadius: "10px",
+                      color: "#F8FAFC",
                     }}
                   />
-                  <Bar dataKey="volume" fill="#0284c7" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="volume" fill="#7C3AED" radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -287,33 +296,33 @@ function RiskAnalytics() {
           {/* Chart 3: Transaction Amount vs Risk Score */}
           <div className="chart-card span-two">
             <div className="chart-title">
-              <TrendingUp size={18} />
-              <h3>Transaction Risk Profile (Recent Transactions)</h3>
+              <TrendingUp size={18} color="#10B981" />
+              <h3>Transaction Risk Profile</h3>
             </div>
             <p className="chart-subtitle">Direct comparison of transaction amount and computed risk score</p>
 
             <div className="chart-container">
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={transactionChartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                  <XAxis dataKey="id" stroke="#94a3b8" fontSize={12} />
-                  <YAxis yAxisId="left" stroke="#38bdf8" fontSize={12} tickFormatter={formatShortCurrency} />
-                  <YAxis yAxisId="right" orientation="right" domain={[0, 100]} stroke="#f59e0b" fontSize={12} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.35} />
+                  <XAxis dataKey="id" stroke="#94A3B8" fontSize={12} tickLine={false} />
+                  <YAxis yAxisId="left" stroke="#06B6D4" fontSize={12} tickFormatter={formatShortCurrency} tickLine={false} />
+                  <YAxis yAxisId="right" orientation="right" domain={[0, 100]} stroke="#A78BFA" fontSize={12} tickLine={false} />
                   <Tooltip
                     formatter={(val, name) => [
                       name === "amount" ? formatCurrency(val) : `${val}/100`,
                       name === "amount" ? "Amount" : "Risk Score",
                     ]}
                     contentStyle={{
-                      background: "#0f172a",
+                      background: "#0F172A",
                       border: "1px solid #334155",
-                      borderRadius: "8px",
-                      color: "#fff",
+                      borderRadius: "10px",
+                      color: "#F8FAFC",
                     }}
                   />
                   <Legend />
-                  <Bar yAxisId="left" dataKey="amount" name="Amount (₹)" fill="#0ea5e9" radius={[4, 4, 0, 0]} />
-                  <Bar yAxisId="right" dataKey="riskScore" name="Risk Score (0-100)" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                  <Bar yAxisId="left" dataKey="amount" name="Amount (₹)" fill="#06B6D4" radius={[4, 4, 0, 0]} />
+                  <Bar yAxisId="right" dataKey="riskScore" name="Risk Score (0–100)" fill="#7C3AED" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
