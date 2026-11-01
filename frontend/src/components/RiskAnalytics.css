@@ -67,8 +67,8 @@
 }
 
 .analytics-card {
-  background: #1E293B;
-  border: 1px solid #334155;
+  background: #111726;
+  border: 1px solid #1C2438;
   padding: 22px;
   border-radius: 16px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
@@ -145,8 +145,8 @@
 }
 
 .chart-card {
-  background: #1E293B;
-  border: 1px solid #334155;
+  background: #111726;
+  border: 1px solid #1C2438;
   border-radius: 16px;
   padding: 24px;
   min-width: 0;
@@ -182,8 +182,8 @@
 
 .analytics-loading,
 .analytics-empty {
-  background: #1E293B;
-  border: 1px solid #334155;
+  background: #111726;
+  border: 1px solid #1C2438;
   border-radius: 16px;
   padding: 50px 20px;
   text-align: center;

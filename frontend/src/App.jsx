@@ -3,21 +3,25 @@ import Transactions from "./components/Transactions";
 import FraudDetection from "./components/FraudDetection";
 import RiskAnalytics from "./components/RiskAnalytics";
 import Investigations from "./components/Investigations";
+import Reports from "./components/Reports";
 
 import {
   LayoutDashboard,
   ArrowLeftRight,
   ShieldAlert,
-  ChartNoAxesCombined,
-  ClipboardList,
+  BarChart2,
+  UserCheck,
+  FileText,
+  Shield,
+  Layers,
+  TriangleAlert,
+  BarChart3,
   ShieldCheck,
+  Search,
+  Bell,
+  ArrowRight,
   RefreshCw,
   AlertCircle,
-  TrendingUp,
-  ArrowUpRight,
-  Activity,
-  Layers,
-  Percent,
 } from "lucide-react";
 
 import {
@@ -41,6 +45,7 @@ function App() {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
   const [systemHealth, setSystemHealth] = useState({
     status: "Checking...",
     database: "Checking...",
@@ -50,8 +55,9 @@ function App() {
     { name: "Dashboard", icon: LayoutDashboard },
     { name: "Transactions", icon: ArrowLeftRight },
     { name: "Fraud Detection", icon: ShieldAlert },
-    { name: "Risk Analytics", icon: ChartNoAxesCombined },
-    { name: "Investigations", icon: ClipboardList },
+    { name: "Risk Analytics", icon: BarChart2 },
+    { name: "Investigations", icon: UserCheck },
+    { name: "Reports", icon: FileText },
   ];
 
   const updateHealth = async () => {
@@ -85,22 +91,14 @@ function App() {
   };
 
   useEffect(() => {
-    if (activePage === "Dashboard") {
+    if (activePage === "Dashboard" || activePage === "Reports") {
       fetchTransactions();
     }
   }, [activePage]);
 
-  // Dashboard calculations based on real MongoDB records
+  // Dashboard metrics calculated dynamically from real database records
   const totalTransactions = transactions.length;
 
-  const transactionVolume = useMemo(() => {
-    return transactions.reduce(
-      (total, tx) => total + Number(tx.amount || 0),
-      0
-    );
-  }, [transactions]);
-
-  // Classifications: Low (0-29), Medium (30-59), High (60-100)
   const highRiskCount = useMemo(() => {
     return transactions.filter(
       (tx) => tx.riskLevel === "High" || (Number(tx.riskScore) || 0) >= 60
@@ -117,7 +115,6 @@ function App() {
     ).length;
   }, [transactions]);
 
-  // Unified Suspicious Transactions: Medium + High Risk (Score >= 30)
   const suspiciousTransactions = useMemo(() => {
     return highRiskCount + mediumRiskCount;
   }, [highRiskCount, mediumRiskCount]);
@@ -137,60 +134,89 @@ function App() {
       : "0.0";
   }, [transactions, totalTransactions]);
 
-  // Dynamic Detection Rate calculation
   const detectionRate = useMemo(() => {
     return totalTransactions > 0
       ? ((suspiciousTransactions / totalTransactions) * 100).toFixed(1)
       : "0.0";
   }, [totalTransactions, suspiciousTransactions]);
 
-  // Risk Trend Chart Data (Chronological progression of risk scores)
+  const legitimateRate = useMemo(() => {
+    return totalTransactions > 0
+      ? ((legitimateTransactions / totalTransactions) * 100).toFixed(1)
+      : "0.0";
+  }, [totalTransactions, legitimateTransactions]);
+
+  // Chronological Risk Trend for AreaChart
   const riskTrendData = useMemo(() => {
-    const sorted = [...transactions].reverse();
-    return sorted.map((tx) => ({
-      name: tx.transactionId,
-      riskScore: Number(tx.riskScore) || 0,
-      amount: Number(tx.amount) || 0,
-      level: tx.riskLevel || (Number(tx.riskScore) >= 60 ? "High" : Number(tx.riskScore) >= 30 ? "Medium" : "Low"),
-    }));
+    if (!transactions.length) return [];
+    const sorted = [...transactions].sort((a, b) => {
+      const dateA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const dateB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+      return dateA - dateB;
+    });
+
+    return sorted.slice(-6).map((tx, idx) => {
+      let dateLabel = "";
+      if (tx.timestamp) {
+        const d = new Date(tx.timestamp);
+        dateLabel = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      }
+      if (!dateLabel || dateLabel === "Invalid Date") {
+        dateLabel = `Oct ${25 + idx}`;
+      }
+      return {
+        name: dateLabel,
+        txnId: tx.transactionId,
+        riskScore: Number(tx.riskScore) || 0,
+        amount: Number(tx.amount) || 0,
+        level: tx.riskLevel || (Number(tx.riskScore) >= 60 ? "High" : Number(tx.riskScore) >= 30 ? "Medium" : "Low"),
+      };
+    });
   }, [transactions]);
 
-  // Suspicious vs Legitimate Donut Chart Data
+  // Donut Chart data: Suspicious vs Legitimate
   const donutData = useMemo(() => [
-    { name: "Legitimate Transactions", value: legitimateTransactions, color: "#10B981" },
-    { name: "Suspicious Flagged", value: suspiciousTransactions, color: "#F43F5E" },
-  ], [legitimateTransactions, suspiciousTransactions]);
+    { name: "Suspicious", value: suspiciousTransactions, color: "#F43F5E" },
+    { name: "Legitimate", value: legitimateTransactions, color: "#10B981" },
+  ], [suspiciousTransactions, legitimateTransactions]);
 
   const formatCurrency = (amount) => {
-    return new Intl.NumberFormat("en-IN", {
-      style: "currency",
-      currency: "INR",
-      maximumFractionDigits: 0,
-    }).format(amount);
+    return `$${Number(amount || 0).toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
   };
 
   const isOnline =
     systemHealth.status === "OK" && systemHealth.database === "Connected";
-  const isConnecting =
-    systemHealth.status === "OK" && systemHealth.database !== "Connected";
+
+  // Filtered transactions for recent table if search term used
+  const displayedRecentTxns = useMemo(() => {
+    if (!searchTerm.trim()) return transactions.slice(0, 6);
+    const q = searchTerm.toLowerCase();
+    return transactions
+      .filter(
+        (tx) =>
+          tx.transactionId?.toLowerCase().includes(q) ||
+          tx.sender?.toLowerCase().includes(q) ||
+          tx.receiver?.toLowerCase().includes(q) ||
+          tx.transactionType?.toLowerCase().includes(q)
+      )
+      .slice(0, 6);
+  }, [transactions, searchTerm]);
 
   return (
     <div className="app">
-      {/* Dark Premium Fintech Sidebar */}
+      {/* Dark Navy Premium Fintech Sidebar */}
       <aside className="sidebar">
-        <div className="brand">
+        <div className="brand" onClick={() => setActivePage("Dashboard")}>
           <div className="brand-logo-icon">
-            <ShieldCheck size={24} color="#F8FAFC" />
+            <Shield size={20} color="#FFFFFF" className="shield-icon" />
           </div>
-          <div>
-            <h2>FinGuard AI</h2>
-            <span className="brand-tag">FINTECH SHIELD</span>
-          </div>
+          <span className="brand-title">FinGuard AI</span>
         </div>
 
-        <p className="sidebar-label">NAVIGATION</p>
-
-        <nav>
+        <nav className="sidebar-nav">
           {menuItems.map((item) => {
             const Icon = item.icon;
             const isActive = activePage === item.name;
@@ -201,250 +227,213 @@ function App() {
                 className={isActive ? "nav-item active" : "nav-item"}
                 onClick={() => setActivePage(item.name)}
               >
-                <Icon size={19} className="nav-icon" />
+                <Icon size={18} className="nav-icon" />
                 <span>{item.name}</span>
-                {isActive && <div className="active-pill" />}
               </button>
             );
           })}
         </nav>
 
-        {/* Decorative Purple Wave Graphics at bottom of sidebar */}
+        {/* Glowing Abstract Wave Mesh at Bottom Left */}
         <div className="sidebar-wave-container">
-          <svg className="sidebar-wave" viewBox="0 0 200 80" preserveAspectRatio="none">
+          <svg
+            className="sidebar-wave-svg"
+            viewBox="0 0 300 200"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            preserveAspectRatio="none"
+          >
             <defs>
-              <linearGradient id="purpleWaveGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#7C3AED" stopOpacity="0.35" />
-                <stop offset="50%" stopColor="#A78BFA" stopOpacity="0.2" />
-                <stop offset="100%" stopColor="#06B6D4" stopOpacity="0.1" />
+              <linearGradient id="waveGradCyanPurple" x1="0%" y1="100%" x2="100%" y2="0%">
+                <stop offset="0%" stopColor="#06B6D4" stopOpacity="0.8" />
+                <stop offset="50%" stopColor="#6366F1" stopOpacity="0.6" />
+                <stop offset="100%" stopColor="#A855F7" stopOpacity="0.4" />
+              </linearGradient>
+              <linearGradient id="waveGradBlue" x1="0%" y1="100%" x2="100%" y2="0%">
+                <stop offset="0%" stopColor="#2563EB" stopOpacity="0.5" />
+                <stop offset="100%" stopColor="#818CF8" stopOpacity="0.1" />
               </linearGradient>
             </defs>
             <path
-              d="M0,30 C50,60 100,10 150,40 C180,55 190,20 200,35 L200,80 L0,80 Z"
-              fill="url(#purpleWaveGradient)"
+              d="M-40,190 C40,140 120,180 200,120 C250,80 280,40 310,20"
+              stroke="url(#waveGradCyanPurple)"
+              strokeWidth="2.5"
             />
             <path
-              d="M0,45 C40,25 90,65 140,35 C170,15 190,50 200,40"
-              fill="none"
-              stroke="#A78BFA"
-              strokeWidth="1.5"
+              d="M-30,195 C50,150 130,190 210,130 C260,90 290,50 320,30"
+              stroke="url(#waveGradCyanPurple)"
+              strokeWidth="2"
+              strokeOpacity="0.75"
+            />
+            <path
+              d="M-20,200 C60,160 140,200 220,140 C270,100 300,60 330,40"
+              stroke="url(#waveGradBlue)"
+              strokeWidth="1.8"
+              strokeOpacity="0.6"
+            />
+            <path
+              d="M-50,185 C30,130 110,170 190,110 C240,70 270,30 300,10"
+              stroke="url(#waveGradCyanPurple)"
+              strokeWidth="1.2"
               strokeOpacity="0.4"
             />
           </svg>
-        </div>
-
-        <div className="sidebar-footer">
-          <div className="footer-status-indicator">
-            <span
-              className="pulse-dot"
-              style={{
-                background: isOnline ? "#10B981" : isConnecting ? "#F59E0B" : "#F43F5E",
-              }}
-            />
-            <span>{isOnline ? "Live Network" : isConnecting ? "Connecting" : "Offline"}</span>
-          </div>
-          <span className="version-tag">v2.0 Premium</span>
         </div>
       </aside>
 
       {/* Main Content Viewport */}
       <main className="main-content">
-        <header className="topbar">
-          <div>
-            <div className="topbar-breadcrumb">
-              <span>PLATFORM</span>
-              <span className="breadcrumb-separator">/</span>
-              <span className="current-crumb">{activePage}</span>
-            </div>
-            <h1>{activePage}</h1>
+        <header className="dashboard-topbar">
+          <div className="topbar-title-block">
+            <h1 className="page-heading">{activePage}</h1>
+            <p className="page-subheading">
+              {activePage === "Dashboard"
+                ? "Real-time transaction monitoring and fraud detection"
+                : activePage === "Transactions"
+                ? "Full transaction history and audit ledger"
+                : activePage === "Fraud Detection"
+                ? "Rule-based scoring parameters and heuristics"
+                : activePage === "Risk Analytics"
+                ? "Macro portfolio analytics and risk metrics"
+                : activePage === "Investigations"
+                ? "Incident response and fraud case investigation"
+                : "Regulatory dossiers and audit export center"}
+            </p>
           </div>
 
-          <div className="topbar-actions">
-            <div
-              className="status-pill"
-              title={`Database Status: ${systemHealth.database || "Unknown"}`}
-            >
-              <span
-                className="status-dot"
-                style={{
-                  background: isOnline
-                    ? "#10B981"
-                    : isConnecting
-                    ? "#F59E0B"
-                    : "#F43F5E",
-                }}
+          <div className="topbar-right-controls">
+            <div className="search-pill-box">
+              <Search size={16} className="search-icon" />
+              <input
+                type="text"
+                placeholder="Search transactions..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="search-input"
               />
-              <span className="status-text">
-                {isOnline
-                  ? "Atlas Connected"
-                  : isConnecting
-                  ? `DB: ${systemHealth.database}`
-                  : "Database Disconnected"}
-              </span>
             </div>
 
-            {activePage === "Dashboard" && (
-              <button
-                onClick={() => {
-                  fetchTransactions();
-                  updateHealth();
-                }}
-                disabled={loading}
-                className="refresh-action-btn"
-                title="Refresh real-time data"
-              >
-                <RefreshCw size={15} className={loading ? "spin" : ""} />
-                <span>{loading ? "Syncing..." : "Sync Data"}</span>
-              </button>
-            )}
+            <button
+              className="icon-circle-btn"
+              title={isOnline ? "Network Live • Atlas Connected" : "Connection Alert"}
+              onClick={fetchTransactions}
+            >
+              <Bell size={17} className="bell-icon" />
+              <span
+                className="notification-badge-dot"
+                style={{ background: isOnline ? "#10B981" : "#F43F5E" }}
+              />
+            </button>
+
+            <div className="user-avatar-badge" title="Aasriya Mathukumilli">
+              <span>AM</span>
+            </div>
           </div>
         </header>
 
         {activePage === "Dashboard" ? (
-          <div className="dashboard-container">
+          <div className="dashboard-body">
             {error && (
               <div className="dashboard-alert-banner">
-                <AlertCircle size={20} color="#F43F5E" />
-                <div className="alert-text">
-                  <strong>Backend Synchronisation Alert:</strong> {error}
-                </div>
-                <button
-                  onClick={fetchTransactions}
-                  className="alert-retry-btn"
-                  disabled={loading}
-                >
-                  Retry
+                <AlertCircle size={18} color="#F43F5E" />
+                <span className="alert-message"><strong>Alert:</strong> {error}</span>
+                <button onClick={fetchTransactions} className="alert-retry-btn">
+                  <RefreshCw size={12} className={loading ? "spin" : ""} /> Retry
                 </button>
               </div>
             )}
 
             {/* 1. Four Summary Cards */}
-            <section className="summary-cards-grid">
+            <section className="summary-cards-row">
               {/* Card 1: Total Transactions */}
-              <div className="fintech-summary-card card-purple">
-                <div className="card-header-row">
-                  <span className="card-label">Total Transactions</span>
-                  <div className="card-icon-wrap icon-purple">
-                    <Layers size={20} color="#A78BFA" />
-                  </div>
+              <div className="fintech-summary-card">
+                <div className="card-icon-box icon-purple">
+                  <Layers size={22} color="#A855F7" />
                 </div>
-                <div className="card-value-row">
-                  <h2>{totalTransactions}</h2>
+                <div className="card-content">
+                  <span className="card-stat-value">{totalTransactions}</span>
+                  <span className="card-stat-label">Total Transactions</span>
                 </div>
-                <div className="card-subtext-row">
-                  <span className="trend-highlight">
-                    <TrendingUp size={13} /> {formatCurrency(transactionVolume)}
-                  </span>
-                  <span className="card-sub-muted">processed volume</span>
-                </div>
-                <div className="card-accent-glow glow-purple" />
               </div>
 
               {/* Card 2: Suspicious Transactions */}
-              <div className="fintech-summary-card card-red">
-                <div className="card-header-row">
-                  <span className="card-label">Suspicious Transactions</span>
-                  <div className="card-icon-wrap icon-red">
-                    <ShieldAlert size={20} color="#F43F5E" />
-                  </div>
+              <div className="fintech-summary-card">
+                <div className="card-icon-box icon-red">
+                  <TriangleAlert size={22} color="#EF4444" />
                 </div>
-                <div className="card-value-row">
-                  <h2 className="text-red">{suspiciousTransactions}</h2>
+                <div className="card-content">
+                  <span className="card-stat-value">{suspiciousTransactions}</span>
+                  <span className="card-stat-label">Suspicious</span>
                 </div>
-                <div className="card-subtext-row">
-                  <span className="badge-critical">
-                    {highRiskCount} High Risk
-                  </span>
-                  <span className="card-sub-muted">Score ≥ 30/100</span>
-                </div>
-                <div className="card-accent-glow glow-red" />
               </div>
 
               {/* Card 3: Average Risk Score */}
-              <div className="fintech-summary-card card-cyan">
-                <div className="card-header-row">
-                  <span className="card-label">Average Risk Score</span>
-                  <div className="card-icon-wrap icon-cyan">
-                    <Activity size={20} color="#06B6D4" />
-                  </div>
+              <div className="fintech-summary-card">
+                <div className="card-icon-box icon-cyan">
+                  <BarChart3 size={22} color="#06B6D4" />
                 </div>
-                <div className="card-value-row">
-                  <h2>{averageRiskScore}<span className="unit">/100</span></h2>
+                <div className="card-content">
+                  <span className="card-stat-value">{averageRiskScore}</span>
+                  <span className="card-stat-label">Avg Risk Score</span>
                 </div>
-                <div className="card-subtext-row">
-                  <span className="badge-cyan">
-                    {Number(averageRiskScore) < 30 ? "Nominal Baseline" : "Elevated Risk"}
-                  </span>
-                  <span className="card-sub-muted">Deterministic UTC</span>
-                </div>
-                <div className="card-accent-glow glow-cyan" />
               </div>
 
               {/* Card 4: Detection Rate */}
-              <div className="fintech-summary-card card-green">
-                <div className="card-header-row">
-                  <span className="card-label">Detection Rate</span>
-                  <div className="card-icon-wrap icon-green">
-                    <Percent size={20} color="#10B981" />
-                  </div>
+              <div className="fintech-summary-card">
+                <div className="card-icon-box icon-green">
+                  <ShieldCheck size={22} color="#10B981" />
                 </div>
-                <div className="card-value-row">
-                  <h2>{detectionRate}<span className="unit">%</span></h2>
+                <div className="card-content">
+                  <span className="card-stat-value">{detectionRate}%</span>
+                  <span className="card-stat-label">Detection Rate</span>
                 </div>
-                <div className="card-subtext-row">
-                  <span className="badge-green">
-                    {legitimateTransactions} Legitimate
-                  </span>
-                  <span className="card-sub-muted">Flagged ratio</span>
-                </div>
-                <div className="card-accent-glow glow-green" />
               </div>
             </section>
 
-            {/* 2. Charts Section: Purple Line/Area Chart & Red/Green Donut Chart */}
-            <section className="dashboard-charts-grid">
-              {/* Chart 1: Purple Gradient Risk Trends Line/Area Chart */}
-              <div className="fintech-chart-card chart-large">
-                <div className="chart-card-header">
-                  <div>
-                    <div className="chart-title-tag">HEURISTIC EVALUATION</div>
-                    <h3>Transaction Risk Trends</h3>
-                  </div>
-                  <span className="chart-meta-pill">Score (0–100)</span>
-                </div>
-
-                <div className="chart-wrapper">
+            {/* 2. Middle Row: Two Charts */}
+            <section className="dashboard-charts-row">
+              {/* Left Chart: Transaction Risk Trend */}
+              <div className="chart-card-box chart-trend-card">
+                <h3 className="chart-title">Transaction Risk Trend</h3>
+                <div className="chart-inner-wrap">
                   {riskTrendData.length === 0 ? (
                     <div className="chart-empty-state">No transaction records available.</div>
                   ) : (
-                    <ResponsiveContainer width="100%" height={260}>
-                      <AreaChart data={riskTrendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <ResponsiveContainer width="100%" height={230}>
+                      <AreaChart
+                        data={riskTrendData}
+                        margin={{ top: 15, right: 15, left: -20, bottom: 0 }}
+                      >
                         <defs>
-                          <linearGradient id="purpleRiskGradient" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#7C3AED" stopOpacity={0.6} />
-                            <stop offset="95%" stopColor="#7C3AED" stopOpacity={0.0} />
+                          <linearGradient id="riskTrendPurple" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#8B5CF6" stopOpacity={0.45} />
+                            <stop offset="95%" stopColor="#8B5CF6" stopOpacity={0.0} />
                           </linearGradient>
                         </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.35} />
+                        <CartesianGrid stroke="#1E2638" strokeDasharray="3 3" vertical={false} />
                         <XAxis
                           dataKey="name"
-                          stroke="#94A3B8"
+                          stroke="#64748B"
                           fontSize={12}
                           tickLine={false}
+                          axisLine={{ stroke: "#1E2638" }}
                         />
                         <YAxis
                           domain={[0, 100]}
-                          stroke="#94A3B8"
+                          ticks={[0, 20, 40, 60, 80, 100]}
+                          stroke="#64748B"
                           fontSize={12}
                           tickLine={false}
+                          axisLine={false}
                         />
                         <Tooltip
                           contentStyle={{
-                            backgroundColor: "#0F172A",
-                            borderColor: "#334155",
+                            backgroundColor: "#111726",
+                            borderColor: "rgba(255, 255, 255, 0.08)",
                             borderRadius: "10px",
                             boxShadow: "0 10px 25px rgba(0,0,0,0.5)",
                             color: "#F8FAFC",
+                            fontSize: "12px",
                           }}
                           formatter={(val, name, item) => [
                             `${val}/100 (${item.payload.level} Risk)`,
@@ -454,10 +443,22 @@ function App() {
                         <Area
                           type="monotone"
                           dataKey="riskScore"
-                          stroke="#A78BFA"
-                          strokeWidth={2.5}
+                          stroke="#8B5CF6"
+                          strokeWidth={3}
                           fillOpacity={1}
-                          fill="url(#purpleRiskGradient)"
+                          fill="url(#riskTrendPurple)"
+                          dot={{
+                            r: 5,
+                            fill: "#FFFFFF",
+                            stroke: "#8B5CF6",
+                            strokeWidth: 2.5,
+                          }}
+                          activeDot={{
+                            r: 7,
+                            fill: "#FFFFFF",
+                            stroke: "#A855F7",
+                            strokeWidth: 3,
+                          }}
                         />
                       </AreaChart>
                     </ResponsiveContainer>
@@ -465,153 +466,136 @@ function App() {
                 </div>
               </div>
 
-              {/* Chart 2: Red and Green Donut Chart */}
-              <div className="fintech-chart-card chart-donut">
-                <div className="chart-card-header">
-                  <div>
-                    <div className="chart-title-tag">AUDIT BREAKDOWN</div>
-                    <h3>Risk Classification</h3>
+              {/* Right Chart: Transaction Distribution */}
+              <div className="chart-card-box chart-dist-card">
+                <h3 className="chart-title">Transaction Distribution</h3>
+                <div className="distribution-body">
+                  <div className="donut-canvas-container">
+                    <ResponsiveContainer width={170} height={170}>
+                      <PieChart>
+                        <Pie
+                          data={donutData}
+                          dataKey="value"
+                          nameKey="name"
+                          innerRadius={50}
+                          outerRadius={74}
+                          paddingAngle={3}
+                          stroke="none"
+                        >
+                          {donutData.map((entry) => (
+                            <Cell key={entry.name} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: "#111726",
+                            borderColor: "rgba(255, 255, 255, 0.08)",
+                            borderRadius: "10px",
+                            color: "#F8FAFC",
+                            fontSize: "12px",
+                          }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+
+                    {/* Center Total Count Overlay inside Donut */}
+                    <div className="donut-center-overlay">
+                      <span className="donut-center-number">{totalTransactions}</span>
+                      <span className="donut-center-label">Transactions</span>
+                    </div>
                   </div>
-                </div>
 
-                <div className="donut-chart-wrapper">
-                  {totalTransactions === 0 ? (
-                    <div className="chart-empty-state">No data available</div>
-                  ) : (
-                    <>
-                      <ResponsiveContainer width="100%" height={200}>
-                        <PieChart>
-                          <Pie
-                            data={donutData}
-                            dataKey="value"
-                            nameKey="name"
-                            innerRadius={55}
-                            outerRadius={80}
-                            paddingAngle={5}
-                            stroke="none"
-                          >
-                            {donutData.map((entry) => (
-                              <Cell key={entry.name} fill={entry.color} />
-                            ))}
-                          </Pie>
-                          <Tooltip
-                            contentStyle={{
-                              backgroundColor: "#0F172A",
-                              borderColor: "#334155",
-                              borderRadius: "10px",
-                              color: "#F8FAFC",
-                            }}
-                          />
-                        </PieChart>
-                      </ResponsiveContainer>
-
-                      <div className="donut-legend">
-                        <div className="legend-row">
-                          <div className="legend-left">
-                            <span className="legend-dot dot-green" />
-                            <span>Legitimate</span>
-                          </div>
-                          <strong>{legitimateTransactions}</strong>
-                        </div>
-                        <div className="legend-row">
-                          <div className="legend-left">
-                            <span className="legend-dot dot-red" />
-                            <span>Suspicious</span>
-                          </div>
-                          <strong className="text-red">{suspiciousTransactions}</strong>
-                        </div>
+                  {/* Clean Legend matching screenshot */}
+                  <div className="distribution-legend">
+                    <div className="legend-item">
+                      <div className="legend-indicator-group">
+                        <span className="color-dot dot-red" />
+                        <span className="legend-name">Suspicious ({suspiciousTransactions})</span>
                       </div>
-                    </>
-                  )}
+                      <span className="legend-percentage">{detectionRate}%</span>
+                    </div>
+
+                    <div className="legend-item">
+                      <div className="legend-indicator-group">
+                        <span className="color-dot dot-green" />
+                        <span className="legend-name">Legitimate ({legitimateTransactions})</span>
+                      </div>
+                      <span className="legend-percentage">{legitimateRate}%</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </section>
 
-            {/* 3. Transaction Table with Red/Green Badges & Purple Hover Highlights */}
-            <section className="fintech-table-card">
-              <div className="table-card-header">
-                <div>
-                  <div className="chart-title-tag">LATEST RECORDINGS</div>
-                  <h3>Recent Financial Activity</h3>
-                </div>
+            {/* 3. Bottom Table: Recent Transactions */}
+            <section className="recent-transactions-card">
+              <div className="table-header-bar">
+                <h3 className="table-card-heading">Recent Transactions</h3>
                 <button
-                  className="table-link-btn"
+                  className="view-all-link-btn"
                   onClick={() => setActivePage("Transactions")}
                 >
-                  <span>All Transactions</span>
-                  <ArrowUpRight size={15} />
+                  <span>View All</span>
+                  <ArrowRight size={14} />
                 </button>
               </div>
 
-              <div className="table-responsive">
-                <table className="fintech-table">
+              <div className="table-scroll-container">
+                <table className="recent-txn-table">
                   <thead>
                     <tr>
-                      <th>Transaction ID</th>
-                      <th>Counterparties</th>
+                      <th>Txn ID</th>
                       <th>Amount</th>
-                      <th>Payment Channel</th>
+                      <th>Type</th>
                       <th>Risk Score</th>
-                      <th>Classification</th>
-                      <th>Settlement</th>
+                      <th>Status</th>
                     </tr>
                   </thead>
-
                   <tbody>
-                    {transactions.slice(0, 6).map((tx) => {
+                    {displayedRecentTxns.map((tx) => {
+                      const score = Number(tx.riskScore) || 0;
                       const isSuspicious =
                         tx.riskLevel === "High" ||
                         tx.riskLevel === "Medium" ||
-                        (Number(tx.riskScore) || 0) >= 30;
+                        score >= 30;
 
                       return (
-                        <tr key={tx._id} className={isSuspicious ? "row-suspicious" : "row-legitimate"}>
-                          <td className="cell-id">
-                            <span className="mono-badge">{tx.transactionId}</span>
+                        <tr key={tx._id || tx.transactionId}>
+                          <td className="cell-txnid">{tx.transactionId}</td>
+                          <td className="cell-amount">{formatCurrency(tx.amount)}</td>
+                          <td className="cell-type">{tx.transactionType || "Transfer"}</td>
+                          <td className="cell-risk-score">
+                            <span
+                              className={`risk-score-pill ${
+                                score >= 60
+                                  ? "score-pill-red"
+                                  : score >= 30
+                                  ? "score-pill-amber"
+                                  : "score-pill-green"
+                              }`}
+                            >
+                              {score}
+                            </span>
                           </td>
-                          <td className="cell-parties">
-                            <span className="party-from">{tx.sender}</span>
-                            <span className="party-arrow">→</span>
-                            <span className="party-to">{tx.receiver}</span>
-                          </td>
-                          <td className="cell-amount">
-                            {formatCurrency(tx.amount)}
-                          </td>
-                          <td>
-                            <span className="type-tag">{tx.transactionType}</span>
-                          </td>
-                          <td>
-                            <div className="risk-score-display">
-                              <span className="score-number">{tx.riskScore ?? 0}</span>
-                              <span className="score-total">/100</span>
-                            </div>
-                          </td>
-                          <td>
+                          <td className="cell-status">
                             {isSuspicious ? (
-                              <span className="badge-suspicious">
-                                <ShieldAlert size={12} />
-                                {tx.riskLevel || "Suspicious"}
+                              <span className="status-pill-badge badge-suspicious">
+                                Suspicious
                               </span>
                             ) : (
-                              <span className="badge-legitimate">
-                                <ShieldCheck size={12} />
+                              <span className="status-pill-badge badge-legitimate">
                                 Legitimate
                               </span>
                             )}
-                          </td>
-                          <td>
-                            <span className={`status-pill-small status-${(tx.status || "completed").toLowerCase()}`}>
-                              {tx.status || "Completed"}
-                            </span>
                           </td>
                         </tr>
                       );
                     })}
 
-                    {transactions.length === 0 && !loading && (
+                    {displayedRecentTxns.length === 0 && !loading && (
                       <tr>
-                        <td colSpan={7} className="table-empty-cell">
-                          No transactions found in database.
+                        <td colSpan={5} className="empty-table-message">
+                          No transactions found.
                         </td>
                       </tr>
                     )}
@@ -628,12 +612,9 @@ function App() {
           <RiskAnalytics />
         ) : activePage === "Investigations" ? (
           <Investigations />
-        ) : (
-          <div className="fintech-summary-card">
-            <h2>{activePage}</h2>
-            <p>Module loaded.</p>
-          </div>
-        )}
+        ) : activePage === "Reports" ? (
+          <Reports transactions={transactions} />
+        ) : null}
       </main>
     </div>
   );
